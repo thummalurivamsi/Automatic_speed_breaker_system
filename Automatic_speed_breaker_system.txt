@@ -1,0 +1,488 @@
+/*
+  Smart Speed Breaker with Vehicle Speed Monitoring
+  -------------------------------------------------
+  This Arduino-based project is designed to monitor vehicle speed using IR sensors and an ESP8266 Wi-Fi module. If a vehicle exceeds a predefined speed limit, an alert is triggered through a buzzer and LEDs, and the data is uploaded to a remote server. A servo motor simulates the movement of a smart speed breaker.
+
+  Features:
+  - Measures vehicle speed using IR sensors
+  - Sends speed data over Wi-Fi using AT commands
+  - Displays status and speed on an LCD
+  - Activates alert mechanisms for overspeeding vehicles
+  - Controls a servo motor to act as a dynamic speed breaker
+*/
+
+#include <LiquidCrystal.h>
+LiquidCrystal lcd(6,7,5,4,3,2);
+ 
+#include <SoftwareSerial.h>
+SoftwareSerial mySerial(A4,A5);
+
+#include <Servo.h>
+Servo myservo;
+
+int ir1 = 11;
+int ir2 = 12;
+
+int red_led   = 8;
+int green_led = 9;
+
+int buzzer    = 13;
+
+
+char res[130];
+char rcv;
+
+void serialFlush()
+{
+  while(Serial.available() > 0) 
+  {
+    char t = Serial.read();
+  }
+} 
+
+void myserialFlush()
+{
+  while(mySerial.available() > 0) 
+  {
+    char t = mySerial.read();
+  }
+} 
+
+
+char check(char* ex,int timeout)
+{
+  int i=0;
+  int j = 0,k=0;
+  while (1)
+  {
+    sl:
+    if(mySerial.available() > 0)
+    {
+      res[i] = mySerial.read();
+      if(res[i] == 0x0a || res[i]=='>' || i == 100)
+      {
+        i++;
+        res[i] = 0;break;
+      }
+      i++;
+    }
+    j++;
+    if(j == 30000)
+    {
+      k++;
+     // Serial.println("kk");
+      j = 0;  
+    }
+    if(k > timeout)
+    {
+      //Serial.println("timeout");
+      return 1;
+     }
+  }//while 1
+  if(!strncmp(ex,res,strlen(ex)))
+  {
+   // Serial.println("ok..");
+    return 0;
+   }
+  else
+  {
+   // Serial.print("Wrong  ");
+   // Serial.println(res);
+    i=0;
+    goto sl;
+   }
+} 
+
+char buff[200],k=0;
+void upload(unsigned int s1,unsigned int s2,unsigned int s3);
+char readserver(void);
+void clearserver(void);
+
+const char* ssid = "iotserver";
+const char* password = "iotserver123";
+
+
+int timer1;
+int timer2;
+float Time;
+int flag1 = 0;
+int flag2 = 0;
+float distance = 5.0;
+float speedv;
+
+
+int sti=0;
+String inputString = "";         // a string to hold incoming data
+boolean stringComplete = false;  // whether the string is complete
+
+void okcheck()
+{
+  unsigned char rcr;
+  do{
+      rcr = Serial.read();
+    }while(rcr != 'K');
+}
+
+void setup() 
+{  
+  char ret;  
+   
+  Serial.begin(9600);
+  mySerial.begin(9600);
+
+  pinMode(ir1, INPUT); pinMode(ir2, INPUT);
+  pinMode(buzzer, OUTPUT);
+  pinMode(red_led, OUTPUT);pinMode(green_led, OUTPUT);
+  myservo.attach(10);
+
+  digitalWrite(buzzer, HIGH);
+  digitalWrite(red_led, HIGH);digitalWrite(green_led, HIGH);
+  myservo.write(10);
+  
+  //43.IOT based vehicle over speed indication
+  lcd.begin(16,2);
+  lcd.clear();
+  lcd.setCursor(0, 0);lcd.print("Smart Speed Breaker");
+  lcd.setCursor(0, 1);lcd.print("Vehicle Speed");
+     delay(2500);
+     
+   //wifiinit();
+
+  Serial.write("AT\r\n");         delay(3000);//okcheck();
+  Serial.write("ATE0\r\n");         okcheck();
+  Serial.write("AT+CWMODE=2\r\n"); delay(3000);
+  Serial.write("AT+CIPMUX=1\r\n");delay(3000);//         okcheck();
+  Serial.write("AT+CIPSERVER=1,23\r\n"); //        okcheck();
+
+  
+  lcd.clear();
+  lcd.print("Waiting For");
+  lcd.setCursor(0,1);
+  lcd.print("Connection");  
+  do{
+     rcv = Serial.read();
+    }while(rcv != 'C');
+
+ 
+  lcd.clear();
+  lcd.print("Connected");
+  delay(1000);
+
+
+  delay(2500);
+  
+  lcd.clear();
+ }
+
+char bf3[50];
+int g=0,f=0,count=0,lc=0;
+
+
+void loop() 
+{
+ 
+if(digitalRead (ir1) == LOW && flag1==0){timer1 = millis(); flag1=1;}
+
+if(digitalRead (ir2) == LOW && flag2==0){timer2 = millis(); flag2=1;}
+
+if (flag1==1 && flag2==1)
+   {
+        if(timer1 > timer2){Time = timer1 - timer2;}
+        else if(timer2 > timer1){Time = timer2 - timer1;}
+        Time=Time/1000;//convert millisecond to second
+        speedv = (distance/Time);//v=d/t
+        speedv = (speedv*3600);//multiply by seconds per hr
+        speedv = (speedv/1000);//division by meters per Km
+   }
+
+if(speedv == 0)
+  { 
+   lcd.setCursor(0, 1); 
+   if(flag1==0 && flag2==0)
+     {
+       lcd.print("  No Vehicle  ");
+     }
+   else
+     {
+       lcd.print(" Waiting..... ");
+     } 
+  }
+else
+  {
+    lcd.clear(); 
+    lcd.setCursor(0, 0); 
+    lcd.print("Speed:");
+    lcd.print(speedv,1);
+    lcd.print("Km/Hr  ");
+    lcd.setCursor(0, 1); 
+    if(speedv > 100)
+      {
+        lcd.print(" Over Speed  "); 
+        digitalWrite(buzzer, LOW);
+        digitalWrite(red_led, LOW);digitalWrite(green_led, HIGH);
+     //     upload(speedv,"Over_Speed");
+          myservo.write(110);delay(5000);
+                  
+                  Serial.write("AT+CIPSEND=0,16\r\n");delay(2000);
+                  Serial.write("Over Speed:");
+                  converts(speedv);//3
+                  Serial.write("\r\n");               delay(3000);
+
+          myservo.write(10); delay(2000);
+                
+        digitalWrite(buzzer, HIGH);
+      }
+    else
+      {
+        lcd.print("Normal Speed  "); 
+        digitalWrite(red_led, HIGH);digitalWrite(green_led, LOW);
+        
+          //upload(speedv,"Normal_Speed");
+        
+                  Serial.write("AT+CIPSEND=0,18\r\n");delay(2000);
+                  Serial.write("Normal Speed:");
+                  converts(speedv);//3
+                  Serial.write("\r\n");               delay(3000);
+                  
+        digitalWrite(buzzer, HIGH);
+        delay(5000);
+      }    
+    lcd.clear();  
+    speedv = 0;
+    flag1 = 0;
+    flag2 = 0;    
+ }
+ 
+}
+
+char bf2[50];
+void upload(int s1,const char *s2)
+{
+  delay(2000);
+  lcd.setCursor(15, 1);lcd.print("U");
+  myserialFlush();
+  mySerial.println("AT+CIPSTART=4,\"TCP\",\"projectsfactoryserver.in\",80");
+    
+  //http://projectsfactoryserver.in/storedata.php?name=pf5&s1=25&s2=35
+  //sprintf(buff,"GET http://embeddedspot.top/iot/storedata.php?name=iot139&s1=%u&s2=%u&s3=%u\r\n\r\n",s1,s2);
+  
+      delay(8000);
+     
+      memset(buff,0,strlen(buff));
+      sprintf(buff,"GET http://projectsfactoryserver.in/storedata.php?name=iot1323&s1=%u&s2=%s\r\n\r\n",s1,s2);
+      
+//      memset(buff,0,strlen(buff));   
+  //    sprintf(buff,"GET http://projectsfactoryserver.in/storedata.php?name=iot4&s1=%s\r\n\r\n",s1);
+         
+      myserialFlush();
+      sprintf(bf2,"AT+CIPSEND=4,%u",strlen(buff));
+      mySerial.println(bf2);
+      
+         delay(5000);
+          
+          
+          myserialFlush();
+          mySerial.print(buff);
+         
+              delay(2000);
+              
+              mySerial.println("AT+CIPCLOSE");
+       lcd.setCursor(15, 1);lcd.print(" ");  
+}
+
+char readserver(void)
+{
+  char t;
+  delay(2000);
+  lcd.setCursor(15, 1);lcd.print("R");
+  myserialFlush();
+  mySerial.println("AT+CIPSTART=4,\"TCP\",\"projectsfactoryserver.in\",80");
+
+  //http://projectsfactoryserver.in/last.php?name=amvi001L
+
+      delay(8000);
+      memset(buff,0,strlen(buff));
+      sprintf(buff,"GET http://projectsfactoryserver.in/last.php?name=iot4L\r\n\r\n");
+      myserialFlush();
+      sprintf(bf2,"AT+CIPSEND=4,%u",strlen(buff));
+      mySerial.println(bf2);
+      
+         delay(5000);
+          
+          
+          myserialFlush();
+          mySerial.print(buff);
+          
+       //read status
+        while(1)
+        {
+           while(!mySerial.available());
+            t = mySerial.read();
+           // Serial.print(t);
+            if(t == '*' || t == '#')
+            {
+              if(t == '#')return 0;
+              while(!mySerial.available());
+               t = mySerial.read();
+             //  Serial.print(t);
+               delay(1000);
+                myserialFlush();
+               return t;
+            }
+        }
+              delay(2000);
+              
+       mySerial.println("AT+CIPCLOSE");
+       lcd.setCursor(15, 1);lcd.print(" "); 
+       delay(2000);  
+return t;
+}
+
+void clearserver(void)
+{
+  delay(2000);
+  lcd.setCursor(15, 1);lcd.print("C");
+  myserialFlush();
+  mySerial.println("AT+CIPSTART=4,\"TCP\",\"projectsfactoryserver.in\",80");
+
+  //sprintf(buff,"GET http://projectsfactoryserver.in/storedata.php?name=iot1&s10=0\r\n\r\n");
+      delay(8000);
+      memset(buff,0,strlen(buff));
+      sprintf(buff,"GET http://projectsfactoryserver.in/storedata.php?name=iot4&s10=0\r\n\r\n");
+      myserialFlush();
+      sprintf(bf2,"AT+CIPSEND=4,%u",strlen(buff));
+      mySerial.println(bf2);
+      
+         delay(5000);
+          
+          
+          myserialFlush();
+          mySerial.print(buff);
+          
+          delay(2000);
+          myserialFlush();
+      
+              
+              
+       mySerial.println("AT+CIPCLOSE");
+       lcd.setCursor(15, 1);lcd.print(" "); 
+       delay(2000);  
+}
+
+
+void wifiinit()
+{
+ char ret;  
+  st:
+  mySerial.println("ATE0");
+  ret  = check((char*)"OK",50);
+  mySerial.println("AT");
+  ret  = check((char*)"OK",50);
+  if(ret != 0)
+  {
+    delay(1000);
+   goto st; 
+  }
+  
+     lcd.clear();lcd.setCursor(0, 0);lcd.print("CONNECTING");  
+  mySerial.println("AT+CWMODE=1");
+   ret  = check((char*)"OK",50);
+ cagain:
+    
+  myserialFlush();
+  mySerial.print("AT+CWJAP=\"");
+  mySerial.print(ssid);
+  mySerial.print("\",\"");
+  mySerial.print(password);
+  mySerial.println("\"");
+  if(check((char*)"OK",300))goto cagain;    
+  mySerial.println("AT+CIPMUX=1");
+  delay(1000);
+ 
+
+  lcd.clear();lcd.setCursor(0, 0);lcd.print("WIFI READY"); 
+}
+
+void convertl(unsigned int value)
+{
+  unsigned int a,b,c,d,e,f,g,h;
+
+      a=value/10000;
+      b=value%10000;
+      c=b/1000;
+      d=b%1000;
+      e=d/100;
+      f=d%100;
+      g=f/10;
+      h=f%10;
+
+
+      a=a|0x30;               
+      c=c|0x30;
+      e=e|0x30; 
+      g=g|0x30;              
+      h=h|0x30;
+    
+     
+  // lcd.write(a);
+  // lcd.write(c);
+   lcd.write(e); 
+   lcd.write(g);
+   lcd.write(h);
+}
+void convertk(unsigned int value)
+{
+  unsigned int a,b,c,d,e,f,g,h;
+
+      a=value/10000;
+      b=value%10000;
+      c=b/1000;
+      d=b%1000;
+      e=d/100;
+      f=d%100;
+      g=f/10;
+      h=f%10;
+
+
+      a=a|0x30;               
+      c=c|0x30;
+      e=e|0x30; 
+      g=g|0x30;              
+      h=h|0x30;
+    
+     
+  // lcd.write(a);
+  // lcd.write(c);
+  // lcd.write(e); 
+   lcd.write(g);
+   lcd.write(h);
+}
+
+
+void converts(unsigned int value)
+{
+  unsigned int a,b,c,d,e,f,g,h;
+
+      a=value/10000;
+      b=value%10000;
+      c=b/1000;
+      d=b%1000;
+      e=d/100;
+      f=d%100;
+      g=f/10;
+      h=f%10;
+
+
+      a=a|0x30;               
+      c=c|0x30;
+      e=e|0x30; 
+      g=g|0x30;              
+      h=h|0x30;
+    
+     
+   //Serial.write(a);
+   //Serial.write(c);
+   Serial.write(e); 
+   Serial.write(g);
+   Serial.write(h);
+}

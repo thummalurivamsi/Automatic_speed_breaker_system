@@ -74,6 +74,8 @@ This helps in maintaining records of overspeeding and can support authorities in
 - Mobile application interface for live monitoring
 
 ---
+![Automatic Smart Speed Breaker System output](https://github.com/user-attachments/assets/1c43fce4-e0d1-4294-8ab1-1d94c8ff3026)
+
 
 ## 👨‍💻 Developed By
 

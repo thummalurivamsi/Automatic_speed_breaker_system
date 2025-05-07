@@ -77,9 +77,9 @@ This helps in maintaining records of overspeeding and can support authorities in
 
 ## 👨‍💻 Developed By
 
-[Your Name]  
-[Your Institution or Organization]  
-[Email / LinkedIn / Portfolio links, if you'd like]
+Vamsi T 
+Graduate Engineer (ECE) 
+vamsithummaluri@gmail.com 
 
 ---
 

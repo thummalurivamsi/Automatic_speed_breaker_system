@@ -62,8 +62,6 @@ This helps in maintaining records of overspeeding and can support authorities in
 
 [Link to Circuit Diagram and Code](https://drive.google.com/file/d/1nGDs6Pp2ZHf9SxvlADdeTeOrwtgM-tXF/view?usp=sharing)
 
-*(You can add actual images/videos in this section once uploaded to GitHub or external hosting.)*
-
 ---
 
 ## 📈 Future Improvements
